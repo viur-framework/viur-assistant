@@ -1,6 +1,9 @@
+import logging
 import typing as t
 
 from viur.core.config import ConfigType
+
+ASSISTANT_LOGGER: logging.Logger = logging.getLogger("viur.assistant")
 
 
 class AssistantConfig(ConfigType):
@@ -19,4 +22,3 @@ CONFIG: t.Final[AssistantConfig] = AssistantConfig(
 """
 The viur-assistent config instance.
 """
-

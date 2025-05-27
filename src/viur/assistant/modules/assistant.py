@@ -7,119 +7,119 @@ import re
 import PIL
 import anthropic
 import openai
-from viur.core import conf, db, errors, exposed
+from viur.core import conf, current, errors, exposed
 from viur.core.decorators import access
 from viur.core.prototypes import List, Singleton, Tree
+
+from ..config import ASSISTANT_LOGGER, CONFIG
+
+logger = ASSISTANT_LOGGER.getChild(__name__)
 
 
 class Assistant(Singleton):
     @exposed
     @access("user-view")
-    def generate_script(self,
-                        prompt: str,
-                        modules_to_include: list[str] = None,
-                        enable_caching: bool = False,
-                        max_thinking_tokens: int = 0
-                        ):
-
-        skel = self.viewSkel()
-        key = db.Key(skel.kindName, self.getKey())
-
-        if not skel.read(key):
-            raise errors.NotFound()
+    # @force_post
+    def generate_script(
+        self,
+        prompt: str,
+        modules_to_include: list[str] = None,
+        enable_caching: bool = False,
+        max_thinking_tokens: int = 0
+    ):
+        if not (skel := self.getContents()):
+            raise errors.InternalServerError(descr="Configuration missing")
 
         llm_params = {
-            "model": skel['anthropic_model'],
-            "max_tokens": skel['anthropic_max_tokens'],
-            "temperature": skel['anthropic_temperature'],
+            "model": skel["anthropic_model"],
+            "max_tokens": skel["anthropic_max_tokens"],
+            "temperature": skel["anthropic_temperature"],
             "system": [{
                 "type": "text",
-                "text": skel['anthropic_system_prompt']
+                "text": skel["anthropic_system_prompt"]
             }],
             "messages": [{
                 "role": "user",
-                "content": []
+                "content": (user_content := []),
             }]
         }
 
-        '''
         # add docs to system prompt (with or without caching), should be delivered by scriptor package
         scriptor_doc_system_param = {
             "type": "text",
-            "text": scriptor_docs_txt_data,
+            "text": "",  # TODO: scriptor docs
         }
-        '''
-        scriptor_doc_system_param = {
-            "type": "text",
-            "text": ""  # scriptor docs#todo
-        }
+        # TODO: llm_params["system"].append(scriptor_doc_system_param)
         if enable_caching:
             scriptor_doc_system_param["cache_control"] = {"type": "ephemeral"}
-        llm_params["system"].append(scriptor_doc_system_param)
 
         # thinking configuration
         if max_thinking_tokens > 0:
             llm_params["thinking"] = {
                 "type": "enabled",
-                "budget_tokens": skel['anthropic_max_thinking_tokens']
+                "budget_tokens": skel["anthropic_max_thinking_tokens"]
             }
 
         # add module structures
-        if modules_to_include is not None:
-            structures_from_viur = {}
-            for module_name in modules_to_include:
-                module = getattr(conf.main_app.vi, module_name, None)
-                if not module:
-                    continue
+        if modules_to_include is not None and (structures := self.get_viur_structures(modules_to_include)):
+            user_content.append({
+                "type": "text",
+                "text": json.dumps({
+                    "module_structures": structures
+                }, indent=2)
+            })
 
-                if isinstance(module, List):
-                    if module_name not in structures_from_viur:
-                        structures_from_viur[module_name] = module.structure()
-                elif isinstance(module, Tree):
-                    if module_name not in structures_from_viur:
-                        structures_from_viur[module_name] = {
-                            "node": module.structure(skelType="node"),
-                            "leaf": module.structure(skelType="leaf")
-                        }
-                else:
-                    raise ValueError(
-                        f"""The module should should be a instance of "tree" or "list". "{module}" is unsupported.""")
-
-            selected_module_structures = {
-                "module_structures": structures_from_viur}
-            selected_module_structures_description = json.dumps(
-                selected_module_structures, indent=2)
-
-            if selected_module_structures["module_structures"]:
-                llm_params["messages"][0]["content"].append({
-                    "type": "text",
-                    "text": selected_module_structures_description
-                })
-
-        # finally append user prompt
-        llm_params["messages"][0]["content"].append({
+        # finally, append user prompt
+        user_content.append({
             "type": "text",
             "text": prompt
         })
 
-        anthropic_client = anthropic.Anthropic(api_key=skel['anthropic_api_key'])
-        message = anthropic_client.messages.create(**llm_params)
+        anthropic_client = anthropic.Anthropic(api_key=CONFIG.api_anthropic_key)
+        logger.debug(f"{llm_params=}")
+        try:
+            message = anthropic_client.messages.create(**llm_params)
+        except Exception as e:
+            logger.exception(e)
+        logger.debug(f"{message=}")
+        current.request.get().response.headers["Content-Type"] = "application/json"
+        return message.model_dump_json()  # TODO: parse real "code" value
         return message
+
+    def get_viur_structures(self, modules_to_include):
+        structures_from_viur = {}
+        for module_name in modules_to_include:
+            module = getattr(conf.main_app.vi, module_name, None)
+            if not module:
+                continue
+
+            if isinstance(module, List):
+                if module_name not in structures_from_viur:
+                    structures_from_viur[module_name] = module.structure()
+            elif isinstance(module, Tree):
+                if module_name not in structures_from_viur:
+                    structures_from_viur[module_name] = {
+                        "node": module.structure(skelType="node"),
+                        "leaf": module.structure(skelType="leaf")
+                    }
+            else:
+                raise ValueError(
+                    f"""The module should should be a instance of "tree" or "list". "{module}" is unsupported.""")
+        return structures_from_viur
 
     @exposed
     @access("user-view")
-    def translate(self,
-                  text: str,
-                  language: str,
-                  simplified: bool = False
-                  ):
-        skel = self.viewSkel()
-        key = db.Key(skel.kindName, self.getKey())
+    # @force_post
+    def translate(
+        self,
+        text: str,
+        language: str,
+        simplified: bool = False
+    ):
+        if not (skel := self.getContents()):
+            raise errors.InternalServerError(descr="Configuration missing")
 
-        if not skel.read(key):
-            raise errors.NotFound()
-        logging.error(skel['openai_api_key'])
-        openai.api_key = skel['openai_api_key']
+        openai.api_key = CONFIG.api_openai_key
 
         language_options = {
             "en": "english",
@@ -142,10 +142,10 @@ class Assistant(Singleton):
 
         lang_param = language_options[language]
         if simplified:
-            lang_param = f"""{lang_param} ({'. '.join(simplified_language_suffixes)})"""
+            lang_param = f"""{lang_param} ({". ".join(simplified_language_suffixes)})"""
 
         response = openai.chat.completions.create(
-            model=skel['openai_model'],
+            model=skel["openai_model"],
             messages=[
                 {
                     "role": "user",
@@ -159,11 +159,15 @@ class Assistant(Singleton):
 
     @exposed
     @access("user-view")
-    def describe_image(self,
-                       filekey: str,
-                       prompt: str = "",
-                       context: str = "",
-                       language: str = "de"):
+    def describe_image(
+        self,
+        filekey: str,
+        prompt: str = "",
+        context: str = "",
+        language: str = "de",
+    ):
+        if not (skel := self.getContents()):
+            raise errors.InternalServerError(descr="Configuration missing")
 
         language_options = {
             "en": "english",
@@ -173,57 +177,15 @@ class Assistant(Singleton):
         }
         lang_param = language_options[language]
 
-        def get_resized_image_bytes(image, target_pixel_count=100_000,
-                                    jpeg_quality=50):
-            # assert 0 <= jpeg_quality <= 100, "jpeg_quality must be between 0 and 100"
-            if isinstance(image, bytes):
-                image = io.BytesIO(image)
-
-            if not isinstance(image, (io.TextIOBase, io.BufferedIOBase, io.RawIOBase, io.IOBase)):
-                raise ValueError("image must be file-like or bytes")
-            pillow_image = PIL.Image.open(image)
-            if pillow_image.format in ['PNG', 'SVG', 'WEBP']:
-                jpeg_image = io.BytesIO()
-                pillow_image.convert('RGB').save(jpeg_image, 'JPEG')
-                jpeg_image.seek(0)
-                pillow_image = PIL.Image.open(jpeg_image)
-
-            original_img_total_pixels = pillow_image.width * pillow_image.height
-            side_ratio_to_n_pixels = (target_pixel_count / original_img_total_pixels) ** 0.5
-            new_width = round(pillow_image.width * side_ratio_to_n_pixels)
-            new_height = round(pillow_image.height * side_ratio_to_n_pixels)
-
-            if new_height > pillow_image.height or new_width > pillow_image.width:
-                resized_img = pillow_image
-            else:
-                resized_img = pillow_image.resize(
-                    (new_width, new_height),
-                    PIL.Image.Resampling.LANCZOS
-                )
-
-            result_bio = io.BytesIO()
-            resized_img.save(result_bio, "jpeg", quality=jpeg_quality)
-            result_bio.seek(0)
-            return result_bio.read()
-
-        if not openai:
-            raise errors.BadGateway("Needed Dependencies are missing.")
-
-        skel = self.viewSkel()
-        key = db.Key(skel.kindName, self.getKey())
-
-        if not skel.read(key):
-            raise errors.NotFound()
-
-        openai.api_key = skel['openai_api_key']
+        openai.api_key = skel["openai_api_key"]
 
         blob, mime = conf.main_app.vi.file.read(key=filekey)
 
         if not blob:
             raise errors.NotFound()
-        resized_image_bytes = get_resized_image_bytes(blob)
+        resized_image_bytes = self._get_resized_image_bytes(blob)
         base64_image = base64.b64encode(resized_image_bytes).decode("utf-8")
-        prompt = f"use the following json data as additional information to describe the image: {re.sub(r'[^a-zA-Z0-9 _-]', '', context)}\n\n" + prompt
+        prompt = f"use the following json data as additional information to describe the image: {re.sub(r"[^a-zA-Z0-9 _-]", "", context)}\n\n" + prompt
         content = [
             {
                 "type": "text",
@@ -243,7 +205,7 @@ class Assistant(Singleton):
         ]
         try:
             completion = openai.chat.completions.create(
-                model=skel['openai_model'],
+                model=skel["openai_model"],
                 messages=[
                     {
                         "role": "user",
@@ -255,6 +217,43 @@ class Assistant(Singleton):
         except Exception as e:
             logging.error(e)
             raise errors.PreconditionFailed(e.code)
+
+    def _get_resized_image_bytes(
+        self,
+        image,
+        target_pixel_count=100_000,
+        jpeg_quality=50,
+    ):
+        # assert 0 <= jpeg_quality <= 100, "jpeg_quality must be between 0 and 100"
+        if isinstance(image, bytes):
+            image = io.BytesIO(image)
+
+        if not isinstance(image, (io.TextIOBase, io.BufferedIOBase, io.RawIOBase, io.IOBase)):
+            raise ValueError("image must be file-like or bytes")
+        pillow_image = PIL.Image.open(image)
+        if pillow_image.format in ["PNG", "SVG", "WEBP"]:
+            jpeg_image = io.BytesIO()
+            pillow_image.convert("RGB").save(jpeg_image, "JPEG")
+            jpeg_image.seek(0)
+            pillow_image = PIL.Image.open(jpeg_image)
+
+        original_img_total_pixels = pillow_image.width * pillow_image.height
+        side_ratio_to_n_pixels = (target_pixel_count / original_img_total_pixels) ** 0.5
+        new_width = round(pillow_image.width * side_ratio_to_n_pixels)
+        new_height = round(pillow_image.height * side_ratio_to_n_pixels)
+
+        if new_height > pillow_image.height or new_width > pillow_image.width:
+            resized_img = pillow_image
+        else:
+            resized_img = pillow_image.resize(
+                (new_width, new_height),
+                PIL.Image.Resampling.LANCZOS
+            )
+
+        result_bio = io.BytesIO()
+        resized_img.save(result_bio, "jpeg", quality=jpeg_quality)
+        result_bio.seek(0)
+        return result_bio.read()
 
 
 Assistant.json = True

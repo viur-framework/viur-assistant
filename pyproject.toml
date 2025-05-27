@@ -1,0 +1,47 @@
+[build-system]
+requires = [
+    "setuptools>=65",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "viur-assistant"
+dynamic = ["version"]
+dependencies = [
+    "viur-core>=3.7.0",
+]
+requires-python = ">=3.11"
+authors = [
+    { name = "Andreas H. Kelch", email = "ak@mausbrand.de" },
+    { name = "Sven Eberth", email = "se@mausbrand.de" },
+]
+maintainers = [
+    { name = "Sven Eberth", email = "se@mausbrand.de" },
+]
+description = "AI-based assistance module plugin for ViUR"
+readme = "README.md"
+license = { file = "LICENSE" }
+keywords = ["viur", "plugin", "backend", "ai", "assistant"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.optional-dependencies]
+testing = [
+    "pycodestyle",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "viur.assistant.version.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.urls]
+Repository = "https://github.com/viur-framework/viur-assistant.git"
+"Bug Tracker" = "https://github.com/viur-framework/viur-assistant/issues"

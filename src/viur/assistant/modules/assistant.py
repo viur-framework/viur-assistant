@@ -1,10 +1,13 @@
-from viur.core.prototypes import Singleton, List, Tree
-from viur.core import errors, conf, db, exposed
+import base64
+import io
+import json
+import logging
+import re
+
+import PIL
+from viur.core import conf, db, errors, exposed
 from viur.core.decorators import access
-from viur.core.modules.file import File
-import json, base64, io, PIL, logging, re
-
-
+from viur.core.prototypes import List, Singleton, Tree
 
 try:
     import anthropic
@@ -16,15 +19,16 @@ try:
 except:
     openai = None
 
+
 class Assistant(Singleton):
     @exposed
     @access("user-view")
     def generate_script(self,
-               prompt: str,
-               modules_to_include:list[str]=None,
-               enable_caching:bool=False,
-               max_thinking_tokens:int=0
-               ):
+                        prompt: str,
+                        modules_to_include: list[str] = None,
+                        enable_caching: bool = False,
+                        max_thinking_tokens: int = 0
+                        ):
         if not anthropic:
             raise errors.BadGateway("Needed Dependencies are missing.")
 
@@ -35,15 +39,15 @@ class Assistant(Singleton):
             raise errors.NotFound()
 
         llm_params = {
-            "model"      : skel['anthropic_model'],
-            "max_tokens" : skel['anthropic_max_tokens'],
+            "model": skel['anthropic_model'],
+            "max_tokens": skel['anthropic_max_tokens'],
             "temperature": skel['anthropic_temperature'],
-            "system"     : [{
+            "system": [{
                 "type": "text",
                 "text": skel['anthropic_system_prompt']
             }],
-            "messages"   : [{
-                "role"   : "user",
+            "messages": [{
+                "role": "user",
                 "content": []
             }]
         }
@@ -57,7 +61,7 @@ class Assistant(Singleton):
         '''
         scriptor_doc_system_param = {
             "type": "text",
-            "text": ""#scriptor docs#todo
+            "text": ""  # scriptor docs#todo
         }
         if enable_caching:
             scriptor_doc_system_param["cache_control"] = {"type": "ephemeral"}
@@ -66,7 +70,7 @@ class Assistant(Singleton):
         # thinking configuration
         if max_thinking_tokens > 0:
             llm_params["thinking"] = {
-                "type"         : "enabled",
+                "type": "enabled",
                 "budget_tokens": skel['anthropic_max_thinking_tokens']
             }
 
@@ -84,8 +88,8 @@ class Assistant(Singleton):
                 elif isinstance(module, Tree):
                     if module_name not in structures_from_viur:
                         structures_from_viur[module_name] = {
-                            "node": module.structure(skelType = "node"),
-                            "leaf": module.structure(skelType = "leaf")
+                            "node": module.structure(skelType="node"),
+                            "leaf": module.structure(skelType="leaf")
                         }
                 else:
                     raise ValueError(
@@ -94,7 +98,7 @@ class Assistant(Singleton):
             selected_module_structures = {
                 "module_structures": structures_from_viur}
             selected_module_structures_description = json.dumps(
-                selected_module_structures, indent = 2)
+                selected_module_structures, indent=2)
 
             if selected_module_structures["module_structures"]:
                 llm_params["messages"][0]["content"].append({
@@ -108,16 +112,16 @@ class Assistant(Singleton):
             "text": prompt
         })
 
-        anthropic_client = anthropic.Anthropic(api_key = skel['anthropic_api_key'])
+        anthropic_client = anthropic.Anthropic(api_key=skel['anthropic_api_key'])
         message = anthropic_client.messages.create(**llm_params)
         return message
 
     @exposed
     @access("user-view")
     def translate(self,
-                  text:str,
-                  language:str,
-                  simplified:bool = False
+                  text: str,
+                  language: str,
+                  simplified: bool = False
                   ):
         if not openai:
             raise errors.BadGateway("Needed Dependencies are missing.")
@@ -154,27 +158,25 @@ class Assistant(Singleton):
             lang_param = f"""{lang_param} ({'. '.join(simplified_language_suffixes)})"""
 
         response = openai.chat.completions.create(
-            model = skel['openai_model'],
-            messages = [
+            model=skel['openai_model'],
+            messages=[
                 {
-                    "role"   : "user",
+                    "role": "user",
                     "content": f"Translate the following text into {lang_param} and only return the translation, keep Htmltags: {text}\n"
                 }
             ],
-            n = 1,
-            stop = None,
+            n=1,
+            stop=None,
         )
         return response.choices[0].message.content
 
     @exposed
     @access("user-view")
     def describe_image(self,
-                       filekey:str,
-                       prompt:str = "", 
-                       context:str = "",
-                       language:str = "de"):
-        
-        
+                       filekey: str,
+                       prompt: str = "",
+                       context: str = "",
+                       language: str = "de"):
 
         language_options = {
             "en": "english",
@@ -184,8 +186,8 @@ class Assistant(Singleton):
         }
         lang_param = language_options[language]
 
-        def get_resized_image_bytes(image, target_pixel_count = 100_000,
-                                    jpeg_quality = 50):
+        def get_resized_image_bytes(image, target_pixel_count=100_000,
+                                    jpeg_quality=50):
             # assert 0 <= jpeg_quality <= 100, "jpeg_quality must be between 0 and 100"
             if isinstance(image, bytes):
                 image = io.BytesIO(image)
@@ -213,7 +215,7 @@ class Assistant(Singleton):
                 )
 
             result_bio = io.BytesIO()
-            resized_img.save(result_bio, "jpeg", quality = jpeg_quality)
+            resized_img.save(result_bio, "jpeg", quality=jpeg_quality)
             result_bio.seek(0)
             return result_bio.read()
 
@@ -236,28 +238,28 @@ class Assistant(Singleton):
         base64_image = base64.b64encode(resized_image_bytes).decode("utf-8")
         prompt = f"use the following json data as additional information to describe the image: {re.sub(r'[^a-zA-Z0-9 _-]', '', context)}\n\n" + prompt
         content = [
-                        {
-                            "type": "text",
-                            "text": prompt+ f"\n\nPlease analyze each image and use all provided and generate appropriate HTML alt attributes in {lang_param}, providing only the plain text for the alt attributes."
-                         },
-                        {
-                            "type"     : "image_url",
-                            "image_url": {
-                                "url"   : f"data:image/jpeg;base64,{base64_image}",
-                                # "url": "http://some-domain.com/image.jpeg",
-                                "detail": "low",
-                                # "low" = 85 Tokens, "high" = calulated differently
-                                # "low" = resize (on openapis side) to < 512x512px
-                                # https://platform.openai.com/docs/guides/images?api-mode=chat#calculating-costs
-                            },
-                        },
-                    ]
+            {
+                "type": "text",
+                "text": prompt + f"\n\nPlease analyze each image and use all provided and generate appropriate HTML alt attributes in {lang_param}, providing only the plain text for the alt attributes."
+            },
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{base64_image}",
+                    # "url": "http://some-domain.com/image.jpeg",
+                    "detail": "low",
+                    # "low" = 85 Tokens, "high" = calulated differently
+                    # "low" = resize (on openapis side) to < 512x512px
+                    # https://platform.openai.com/docs/guides/images?api-mode=chat#calculating-costs
+                },
+            },
+        ]
         try:
             completion = openai.chat.completions.create(
-                model = skel['openai_model'],
-                messages = [
+                model=skel['openai_model'],
+                messages=[
                     {
-                        "role"   : "user",
+                        "role": "user",
                         "content": content,
                     }
                 ]
@@ -268,4 +270,4 @@ class Assistant(Singleton):
             raise errors.PreconditionFailed(e.code)
 
 
-Assistant.json=True
+Assistant.json = True

@@ -18,11 +18,11 @@ class ImageBone(FileBone):
     type = FileBone.type + ".image"
 
     def __init__(
-            self,
-            *,
-            using: t.Optional[RelSkel] = ImageBoneRelSkel,
-            validMimeTypes: None | t.Iterable[str] = ["image/*"],
-            **kwargs,
+        self,
+        *,
+        using: t.Type[RelSkel] = ImageBoneRelSkel,
+        validMimeTypes: None | t.Iterable[str] = ("image/*",),
+        **kwargs,
     ):
         super().__init__(
             using=using,

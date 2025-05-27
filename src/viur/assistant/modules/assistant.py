@@ -5,19 +5,11 @@ import logging
 import re
 
 import PIL
+import anthropic
+import openai
 from viur.core import conf, db, errors, exposed
 from viur.core.decorators import access
 from viur.core.prototypes import List, Singleton, Tree
-
-try:
-    import anthropic
-except:
-    anthropic = None
-
-try:
-    import openai
-except:
-    openai = None
 
 
 class Assistant(Singleton):
@@ -29,8 +21,6 @@ class Assistant(Singleton):
                         enable_caching: bool = False,
                         max_thinking_tokens: int = 0
                         ):
-        if not anthropic:
-            raise errors.BadGateway("Needed Dependencies are missing.")
 
         skel = self.viewSkel()
         key = db.Key(skel.kindName, self.getKey())
@@ -123,9 +113,6 @@ class Assistant(Singleton):
                   language: str,
                   simplified: bool = False
                   ):
-        if not openai:
-            raise errors.BadGateway("Needed Dependencies are missing.")
-
         skel = self.viewSkel()
         key = db.Key(skel.kindName, self.getKey())
 

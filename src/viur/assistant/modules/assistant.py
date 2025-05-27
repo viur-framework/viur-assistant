@@ -1,8 +1,8 @@
 import base64
 import io
 import json
-import logging
 import re
+import typing as t
 
 import PIL
 import anthropic
@@ -19,9 +19,10 @@ logger = ASSISTANT_LOGGER.getChild(__name__)
 class Assistant(Singleton):
     @exposed
     @access("user-view")
-    # @force_post
+    # TODO: @force_post
     def generate_script(
         self,
+        *,
         prompt: str,
         modules_to_include: list[str] = None,
         enable_caching: bool = False,
@@ -109,52 +110,55 @@ class Assistant(Singleton):
 
     @exposed
     @access("user-view")
-    # @force_post
+    # TODO: @force_post
     def translate(
         self,
+        *,
         text: str,
         language: str,
-        simplified: bool = False
+        simplified: bool = False,
+        characteristic: t.Optional[str] = None,
     ):
+        if simplified:
+            characteristic = "simplified"
+            logger.warning('simplified is deprecated, use characteristic="simplified" instead')
+            if characteristic is not None:
+                raise errors.BadRequest("Cannot use parameter *simplified* and *characteristic* at the same time")
+
         if not (skel := self.getContents()):
             raise errors.InternalServerError(descr="Configuration missing")
 
-        openai.api_key = CONFIG.api_openai_key
-
-        language_options = {
-            "en": "english",
-            "fr": "french",
-            "de": "german",
-            "nl": "dutch",
-        }
-
-        simplified_language_suffixes = [
-            "simplified",
-            "short sentences",
-            "one information per sentence",
-            "simple words",
-            "avoid negative language",
-            "sentences should be active, not passive",
-            "avoid subjunctive clause",
-            "one sentence per line",
-            "split compound nouns with hyphens"
+        characteristics = [
+            *CONFIG.translate_language_characteristics.get("*", []),
+            *CONFIG.translate_language_characteristics.get(characteristic, []),
         ]
 
-        lang_param = language_options[language]
-        if simplified:
-            lang_param = f"""{lang_param} ({". ".join(simplified_language_suffixes)})"""
-
-        response = openai.chat.completions.create(
-            model=skel["openai_model"],
-            messages=[
-                {
+        openai.api_key = CONFIG.api_openai_key
+        try:
+            response = openai.chat.completions.create(
+                model=skel["openai_model"],
+                messages=[{  # type: ignore (typed dict)
                     "role": "user",
-                    "content": f"Translate the following text into {lang_param} and only return the translation, keep Htmltags: {text}\n"
-                }
-            ],
-            n=1,
-            stop=None,
-        )
+                    "content": (
+                        f"Translate the following text into {CONFIG.language_map.get(language, language)}"
+                        f" ({". ".join(characteristics)})"
+                        f" and only return the translation, keep HTML-tags: {text}\n"
+                    )
+                }],
+                n=1,
+                stop=None,
+            )
+        except openai.APIConnectionError as e:
+            logger.error(f"OpenAI API error: {e}")
+            raise errors.ServiceUnavailable(descr=str(e)) from e
+        except openai.RateLimitError as e:
+            logger.error(f"OpenAI API rate-limit reached: {e}")
+            current.request.get().response.headers["Retry-After"] = e.response.headers.get("Retry-After", "60")
+            raise errors.HTTPException(status=e.status_code, name=e.code, descr=str(e)) from e
+        except openai.APIStatusError as e:
+            logger.error(f"OpenAI API error: [{e.status_code} {e.code}] {e}")
+            raise errors.HTTPException(status=e.status_code, name=e.code, descr=str(e)) from e
+
         return response.choices[0].message.content
 
     @exposed
@@ -169,27 +173,25 @@ class Assistant(Singleton):
         if not (skel := self.getContents()):
             raise errors.InternalServerError(descr="Configuration missing")
 
-        language_options = {
-            "en": "english",
-            "fr": "french",
-            "de": "german",
-            "nl": "dutch",
-        }
-        lang_param = language_options[language]
-
-        openai.api_key = skel["openai_api_key"]
-
-        blob, mime = conf.main_app.vi.file.read(key=filekey)
+        blob, mime = conf.main_app.file.read(key=filekey)
 
         if not blob:
-            raise errors.NotFound()
+            raise errors.NotFound(f"File not found with {filekey=!r}")
+
         resized_image_bytes = self._get_resized_image_bytes(blob)
         base64_image = base64.b64encode(resized_image_bytes).decode("utf-8")
-        prompt = f"use the following json data as additional information to describe the image: {re.sub(r"[^a-zA-Z0-9 _-]", "", context)}\n\n" + prompt
+
         content = [
             {
                 "type": "text",
-                "text": prompt + f"\n\nPlease analyze each image and use all provided and generate appropriate HTML alt attributes in {lang_param}, providing only the plain text for the alt attributes."
+                "text": (
+                    f"Use the following JSON data as additional information to describe the image:"
+                    f" {re.sub(r"[^a-zA-Z0-9 _-]", "", context)}\n\n"
+                    f"{prompt}\n\n"
+                    f"Analyze the image and generate an appropriate HTML alt attribute"
+                    f" in language: {CONFIG.language_map.get(language, language)}."
+                    f" Provide only the plain text for the alt attributes."
+                ),
             },
             {
                 "type": "image_url",
@@ -203,20 +205,28 @@ class Assistant(Singleton):
                 },
             },
         ]
+
+        openai.api_key = CONFIG.api_openai_key
         try:
             completion = openai.chat.completions.create(
                 model=skel["openai_model"],
-                messages=[
-                    {
-                        "role": "user",
-                        "content": content,
-                    }
-                ]
+                messages=[{  # type: ignore (typed dict)
+                    "role": "user",
+                    "content": content,
+                }],
             )
-            return completion.choices[0].message.content
-        except Exception as e:
-            logging.error(e)
-            raise errors.PreconditionFailed(e.code)
+        except openai.APIConnectionError as e:
+            logger.error(f"OpenAI API error: {e}")
+            raise errors.ServiceUnavailable(descr=str(e)) from e
+        except openai.RateLimitError as e:
+            logger.error(f"OpenAI API rate-limit reached: {e}")
+            current.request.get().response.headers["Retry-After"] = e.response.headers.get("Retry-After", "60")
+            raise errors.HTTPException(status=e.status_code, name=e.code, descr=str(e)) from e
+        except openai.APIStatusError as e:
+            logger.error(f"OpenAI API error: [{e.status_code} {e.code}] {e}")
+            raise errors.HTTPException(status=e.status_code, name=e.code, descr=str(e)) from e
+
+        return completion.choices[0].message.content
 
     def _get_resized_image_bytes(
         self,
@@ -230,6 +240,7 @@ class Assistant(Singleton):
 
         if not isinstance(image, (io.TextIOBase, io.BufferedIOBase, io.RawIOBase, io.IOBase)):
             raise ValueError("image must be file-like or bytes")
+
         pillow_image = PIL.Image.open(image)
         if pillow_image.format in ["PNG", "SVG", "WEBP"]:
             jpeg_image = io.BytesIO()

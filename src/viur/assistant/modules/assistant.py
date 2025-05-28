@@ -1,7 +1,7 @@
 import base64
 import io
 import json
-import re
+import os
 import typing as t
 
 import PIL
@@ -87,9 +87,8 @@ class Assistant(Singleton):
         logger.debug(f"{message=}")
         current.request.get().response.headers["Content-Type"] = "application/json"
         return message.model_dump_json()  # TODO: parse real "code" value
-        return message
 
-    def get_viur_structures(self, modules_to_include):
+    def get_viur_structures(self, modules_to_include: t.Iterable[str]) -> dict[str, dict]:
         structures_from_viur = {}
         for module_name in modules_to_include:
             module = getattr(conf.main_app.vi, module_name, None)
@@ -122,10 +121,10 @@ class Assistant(Singleton):
         characteristic: t.Optional[str] = None,
     ):
         if simplified:
-            characteristic = "simplified"
-            logger.warning('simplified is deprecated, use characteristic="simplified" instead')
             if characteristic is not None:
                 raise errors.BadRequest("Cannot use parameter *simplified* and *characteristic* at the same time")
+            logger.warning('simplified is deprecated, use characteristic="simplified" instead')
+            characteristic = "simplified"
 
         if not (skel := self.getContents()):
             raise errors.InternalServerError(descr="Configuration missing")
@@ -161,7 +160,7 @@ class Assistant(Singleton):
             logger.error(f"OpenAI API error: [{e.status_code} {e.code}] {e}")
             raise errors.HTTPException(status=e.status_code, name=e.code, descr=str(e)) from e
 
-        return response.choices[0].message.content
+        return response.choices[0].message.content.strip("\"'")
 
     @exposed
     @access("user-view")
@@ -170,29 +169,41 @@ class Assistant(Singleton):
         filekey: str,
         prompt: str = "",
         context: str = "",
-        language: str = "de",
+        language: str | None = None,
     ):
         if not (skel := self.getContents()):
             raise errors.InternalServerError(descr="Configuration missing")
 
-        blob, mime = conf.main_app.file.read(key=filekey)
+        if language is None:
+            language = current.language.get()
 
+        blob, mime = conf.main_app.file.read(key=filekey)
         if not blob:
             raise errors.NotFound(f"File not found with {filekey=!r}")
 
-        resized_image_bytes = self._get_resized_image_bytes(blob)
+        resized_image_bytes = self._get_resized_image_bytes(
+            image=blob,
+            target_pixel_count=CONFIG.describe_image_pixel_default,
+            jpeg_quality=CONFIG.describe_image_jpeg_quality_default,
+        )
         base64_image = base64.b64encode(resized_image_bytes).decode("utf-8")
+
+        context_prompt = ""
+        if context or prompt:
+            context_prompt = (
+                f"Use the following data as additional information to describe the image:\n"
+                # TODO: ??? f" {re.sub(r"[^a-zA-Z0-9 _-]", "", context)}\n\n"
+                f" {prompt}\n\n{context}"
+            )
 
         content = [
             {
                 "type": "text",
                 "text": (
-                    f"Use the following JSON data as additional information to describe the image:"
-                    f" {re.sub(r"[^a-zA-Z0-9 _-]", "", context)}\n\n"
-                    f"{prompt}\n\n"
                     f"Analyze the image and generate an appropriate HTML alt attribute"
                     f" in language: {CONFIG.language_map.get(language, language)}."
-                    f" Provide only the plain text for the alt attributes."
+                    f" Provide only the plain text for the alt attributes without quotes and label.\n\n"
+                    f"{context_prompt}\n"
                 ),
             },
             {
@@ -228,18 +239,19 @@ class Assistant(Singleton):
             logger.error(f"OpenAI API error: [{e.status_code} {e.code}] {e}")
             raise errors.HTTPException(status=e.status_code, name=e.code, descr=str(e)) from e
 
-        return completion.choices[0].message.content
+        return completion.choices[0].message.content.strip("\"'")
 
     def _get_resized_image_bytes(
         self,
-        image,
-        target_pixel_count=100_000,
-        jpeg_quality=50,
+        image: t.IO[bytes] | str | bytes | "os.PathLike[str]" | "os.PathLike[bytes]",
+        target_pixel_count: int,
+        jpeg_quality: int = 50,
     ):
-        # assert 0 <= jpeg_quality <= 100, "jpeg_quality must be between 0 and 100"
+        if not (0 <= jpeg_quality <= 100):
+            raise ValueError("jpeg_quality must be between 0 and 100")
+
         if isinstance(image, bytes):
             image = io.BytesIO(image)
-
         if not isinstance(image, (io.TextIOBase, io.BufferedIOBase, io.RawIOBase, io.IOBase)):
             raise ValueError("image must be file-like or bytes")
 

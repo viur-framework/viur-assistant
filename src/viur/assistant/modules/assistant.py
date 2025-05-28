@@ -33,7 +33,7 @@ class Assistant(Singleton):
 
         llm_params = {
             "model": skel["anthropic_model"],
-            "max_tokens": skel["anthropic_max_tokens"],
+            "max_tokens": skel["anthropic_max_tokens"] + max_thinking_tokens,
             "temperature": skel["anthropic_temperature"],
             "system": [{
                 "type": "text",
@@ -58,7 +58,8 @@ class Assistant(Singleton):
         if max_thinking_tokens > 0:
             llm_params["thinking"] = {
                 "type": "enabled",
-                "budget_tokens": skel["anthropic_max_thinking_tokens"]
+                # TODO: "budget_tokens": min(max_thinking_tokens, skel["anthropic_max_thinking_tokens"])
+                "budget_tokens": max_thinking_tokens,
             }
 
         # add module structures
@@ -82,6 +83,7 @@ class Assistant(Singleton):
             message = anthropic_client.messages.create(**llm_params)
         except Exception as e:
             logger.exception(e)
+            raise errors.InternalServerError(descr=str(e))
         logger.debug(f"{message=}")
         current.request.get().response.headers["Content-Type"] = "application/json"
         return message.model_dump_json()  # TODO: parse real "code" value

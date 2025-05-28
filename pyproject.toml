@@ -36,6 +36,7 @@ classifiers = [
 [project.optional-dependencies]
 testing = [
     "pycodestyle",
+    "pytest",
 ]
 
 [tool.setuptools.dynamic]

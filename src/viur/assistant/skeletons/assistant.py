@@ -6,7 +6,6 @@ class AssistantSkel(Skeleton):
     anthropic_model = StringBone(
         descr="Model",
         params={"category": "Anthropic"},
-        readOnly=True,
         defaultValue="claude-3-7-sonnet-20250219",
     )
 
@@ -15,7 +14,6 @@ class AssistantSkel(Skeleton):
         params={"category": "Anthropic"},
         min=512,
         max=4096,
-        readOnly=True,
         defaultValue=1024,
     )
 
@@ -24,7 +22,6 @@ class AssistantSkel(Skeleton):
         params={"category": "Anthropic"},
         min=0,
         max=64000,
-        readOnly=True,
         defaultValue=0,
     )
 
@@ -34,12 +31,10 @@ class AssistantSkel(Skeleton):
         precision=1,
         min=0,
         max=1,
-        readOnly=True,
         defaultValue=1.0,
     )
     anthropic_system_prompt = TextBone(
         descr="Systemprompt",
-        readOnly=True,
         params={"category": "Anthropic"},
         defaultValue="You are a coding-assistant that helps develop python-code for accessing a viur-backend. You only output json-strings containing a single key named \"code\".",
     )
@@ -47,6 +42,5 @@ class AssistantSkel(Skeleton):
     openai_model = StringBone(
         descr="Model",
         params={"category": "OpenAi"},
-        readOnly=True,
         defaultValue="gpt-4o-mini",
     )

@@ -3,11 +3,12 @@ import io
 import json
 import os
 import typing as t
+from json import JSONDecodeError
 
 import PIL
 import anthropic
 import openai
-from viur.core import conf, current, errors, exposed
+from viur.core import conf, current, errors, exposed, utils
 from viur.core.decorators import access
 from viur.core.prototypes import List, Singleton, Tree
 
@@ -135,7 +136,9 @@ class Assistant(Singleton):
         ]
 
         openai.api_key = CONFIG.api_openai_key
+        client = openai.Client(api_key=CONFIG.api_openai_key)
         try:
+            # TODO: https://platform.openai.com/docs/guides/structured-outputs?api-mode=responses#json-mode
             response = openai.chat.completions.create(
                 model=skel["openai_model"],
                 messages=[{  # type: ignore (typed dict)
@@ -146,9 +149,48 @@ class Assistant(Singleton):
                         f" and only return the translation, keep HTML-tags: {text}\n"
                     )
                 }],
+                # text={"format": {"type": "json_object"}},  # type: ignore (typed dict)
                 n=1,
                 stop=None,
+                response_format={ # type: ignore (typed dict)
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "translatator",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "translation": {"type": "string"}
+                            },
+                            "required": ["translation"],
+                            "additionalProperties": False
+                        },
+                        "strict": True
+                    }
+                }
             )
+
+            """
+            response = client.responses.create(
+                model=skel["openai_model"],
+                input=[  # type: ignore (typed dict)
+                    {
+                        "role": "system",
+                        "content": "You are a helpful translation assistant designed to output JSON.",
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Translate the following text into {CONFIG.language_map.get(language, language)}"
+                            f" ({". ".join(characteristics)})"
+                            f" and only return the translation, keep HTML-tags.\n"
+                            f"Please respond in the format {{text: ...}}\n"
+                            f"{text}\n"
+                        )
+                    },
+                ],
+                text={"format": {"type": "json_object"}},  # type: ignore (typed dict)
+            )
+            """
         except openai.APIConnectionError as e:
             logger.error(f"OpenAI API error: {e}")
             raise errors.ServiceUnavailable(descr=str(e)) from e
@@ -160,6 +202,18 @@ class Assistant(Singleton):
             logger.error(f"OpenAI API error: [{e.status_code} {e.code}] {e}")
             raise errors.HTTPException(status=e.status_code, name=e.code, descr=str(e)) from e
 
+        logger.debug(f"{response = }")
+        try:
+            message = json.loads(response.choices[0].message.content)
+            message = message["translation"]
+        except (JSONDecodeError, KeyError):
+            raise errors.InternalServerError("Got invalid JSON from API")
+
+        return self.render_text(message)
+        return message
+
+        print(response.output_text)
+        return response.output_text
         return response.choices[0].message.content.strip("\"'")
 
     @exposed
@@ -280,5 +334,14 @@ class Assistant(Singleton):
         result_bio.seek(0)
         return result_bio.read()
 
+    def render_text(self, text: str) -> t.Any:
+        if utils.string.is_prefix(self.render.kind, "html"):
+            current.request.get().response.headers["Content-Type"] = "text/html; charset=utf-8"
+            return text
+        elif utils.string.is_prefix(self.render.kind, "json"):
+            current.request.get().response.headers["Content-Type"] = "application/json; charset=utf-8"
+            return json.dumps(text)
+        raise errors.NotImplemented(f"{self.render.kind} rendering not implemented")
 
 Assistant.json = True
+Assistant.html = True

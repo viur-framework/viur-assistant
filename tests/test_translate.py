@@ -10,6 +10,7 @@ def print_response_on_error(response: requests.Response):
     if response.status_code >= 400:
         print(f"\n[HTTP ERROR] {response.status_code} {response.reason}")
         print(f"Response body:\n{response.text}\n")
+    print(f"Response body:\n{response.text}\n")
 
 def test_translate_minimal(session):
     params = {

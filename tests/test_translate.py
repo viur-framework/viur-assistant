@@ -1,16 +1,16 @@
-import os
-import pytest
 import requests
 
 BASE_URL = "http://localhost:8080/json/assistant/translate"
 
 from utils import session
 
+
 def print_response_on_error(response: requests.Response):
     if response.status_code >= 400:
         print(f"\n[HTTP ERROR] {response.status_code} {response.reason}")
         print(f"Response body:\n{response.text}\n")
-    print(f"Response body:\n{response.text}\n")
+    print(f"Response body:\n{response.json()}\n")
+
 
 def test_translate_minimal(session):
     params = {
@@ -21,6 +21,20 @@ def test_translate_minimal(session):
     print_response_on_error(response)
     assert response.status_code == 200
     assert response.text.strip()  # should contain translation
+    assert response.json().strip()  # should be JSON
+
+
+def test_translate_umlauts(session):
+    params = {
+        "text": "flowers bloom in spring.",
+        "language": "de",
+    }
+    response = session.post(BASE_URL, params=params)
+    print_response_on_error(response)
+    assert response.status_code == 200
+    assert response.text.strip()  # should contain translation
+    assert "ü" in response.json()
+
 
 def test_translate_with_characteristic(session):
     params = {
@@ -33,6 +47,7 @@ def test_translate_with_characteristic(session):
     assert response.status_code == 200
     assert response.text.strip()
 
+
 def test_translate_with_simplified(session):
     params = {
         "text": "Hallo Welt!",
@@ -44,6 +59,7 @@ def test_translate_with_simplified(session):
     assert response.status_code == 200
     assert response.text.strip()
 
+
 def test_translate_conflicting_simplified_and_characteristic(session):
     params = {
         "text": "Hallo Welt!",
@@ -54,6 +70,7 @@ def test_translate_conflicting_simplified_and_characteristic(session):
     response = session.post(BASE_URL, params=params)
     print_response_on_error(response)
     assert response.status_code == 400  # BadRequest
+
 
 def test_translate_missing_parameters(session):
     params = {

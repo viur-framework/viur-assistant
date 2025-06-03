@@ -206,7 +206,7 @@ class Assistant(Singleton):
                 "content": (
                     f"Translate the following text into {CONFIG.language_map.get(language, language)}"
                     f" ({". ".join(characteristics)})"
-                    f" and only return the translation, keep HTML-tags: {text}\n"
+                    f" and only return the translation, keep HTML-tags (if there are any):\n\n{text}\n"
                 )
             }],
             stop=None,
@@ -400,7 +400,7 @@ class Assistant(Singleton):
             message = message["answer"]
         except (JSONDecodeError, KeyError):
             raise errors.InternalServerError("Got invalid JSON from API")
-        return message.encode("utf-8").decode()  # get rid of unicode codes like \u00ea
+        return message
 
     def render_text(self, text: str) -> t.Any:
         """

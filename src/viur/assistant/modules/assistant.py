@@ -209,6 +209,7 @@ class Assistant(Singleton):
                     f" and only return the translation, keep HTML-tags: {text}\n"
                 )
             }],
+            stop=None,
         )
 
         return self.render_text(message)
@@ -365,7 +366,6 @@ class Assistant(Singleton):
                 model=model,
                 messages=messages,
                 n=kwargs.pop("n", 1),  # How many chat completion choices
-                stop=kwargs.pop("stop", None),
                 response_format=kwargs.pop("response_format", {  # type: ignore (typed dict)
                     "type": "json_schema",
                     "json_schema": {

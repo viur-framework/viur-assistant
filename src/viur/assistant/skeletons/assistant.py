@@ -1,9 +1,11 @@
-from viur.core.bones import *
-from viur.core.skeleton import Skeleton
 import typing as t
 
+from viur.core.bones import *
+from viur.core.skeleton import Skeleton
+
+
 class AssistantSkel(Skeleton):
-    kindName : t.Final[str] = "viur-assistant"
+    kindName: t.Final[str] = "viur-assistant"
 
     anthropic_model = StringBone(
         descr="Model",

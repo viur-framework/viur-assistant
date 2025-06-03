@@ -49,6 +49,7 @@ class Assistant(Singleton):
        Error handling is included for common failure modes such as
        misconfiguration or service unavailability.
     """
+    kindName: t.Final[str] = "viur-assistant"
 
     @exposed
     @access("user-view")

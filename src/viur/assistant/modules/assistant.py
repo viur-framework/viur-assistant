@@ -400,7 +400,7 @@ class Assistant(Singleton):
             message = message["answer"]
         except (JSONDecodeError, KeyError):
             raise errors.InternalServerError("Got invalid JSON from API")
-        return message
+        return message.encode("utf-8").decode()  # get rid of unicode codes like \u00ea
 
     def render_text(self, text: str) -> t.Any:
         """

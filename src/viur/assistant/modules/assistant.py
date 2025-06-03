@@ -89,6 +89,8 @@ class Assistant(Singleton):
            is currently marked as a TODO and has to be discussed.
         """
 
+        kindName: t.Final[str] = "viur-assistant"
+
         if not (skel := self.getContents()):
             raise errors.InternalServerError(descr="Configuration missing")
 
@@ -419,3 +421,6 @@ class Assistant(Singleton):
 
 Assistant.json = True
 Assistant.html = True
+
+# Enforce AssistantSkel is loaded and initialized anywhere
+from ..skeletons.assistant import AssistantSkel  # noqa

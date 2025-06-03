@@ -19,6 +19,10 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: PyPi Release
+    permissions:
+      # IMPORTANT: this permission is mandatory for Trusted Publishing
+      id-token: write
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python
@@ -35,11 +39,8 @@ jobs:
     - name: Publish package
       if: "!startsWith(github.ref_name, 'v-test-')"
       uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        user: __token__
-        password: ${{ secrets.PYPI_API_TOKEN }}
 
-    - name: Publish package Test
+    - name: Publish package Test # TODO: not setup yet
       if: "startsWith(github.ref_name, 'v-test-')"
       uses: pypa/gh-action-pypi-publish@release/v1
       with:

@@ -391,7 +391,7 @@ class Assistant(Singleton):
             logger.error(f"OpenAI API error: [{e.status_code} {e.code}] {e}")
             raise errors.HTTPException(status=e.status_code, name=e.code, descr=str(e)) from e
 
-        logger.debug(f"{response = }")
+        logger.debug(f"{response=}")
         try:
             message = json.loads(response.choices[0].message.content)
             message = message["answer"]

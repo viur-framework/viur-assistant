@@ -11,7 +11,7 @@ import openai
 from openai.types import ChatModel
 from openai.types.chat import ChatCompletionMessageParam
 from viur.core import conf, current, db, errors, exposed, utils
-from viur.core.decorators import access
+from viur.core.decorators import access, force_post
 from viur.core.prototypes import List, Singleton, Tree
 
 from viur.assistant.config import ASSISTANT_LOGGER, CONFIG
@@ -52,8 +52,8 @@ class Assistant(Singleton):
     kindName: t.Final[str] = "viur-assistant"
 
     @exposed
-    @access("user-view")
-    # TODO: @force_post
+    @access("admin")
+    @force_post
     def generate_script(
         self,
         *,
@@ -89,9 +89,6 @@ class Assistant(Singleton):
          - The actual parsing of the generated code (e.g., extracting specific script content)
            is currently marked as a TODO and has to be discussed.
         """
-
-        kindName: t.Final[str] = "viur-assistant"
-
         if not (skel := self.getContents()):
             raise errors.InternalServerError(descr="Configuration missing")
 
@@ -190,14 +187,13 @@ class Assistant(Singleton):
         return structures_from_viur
 
     @exposed
-    @access("user-view")
-    # TODO: @force_post
+    @access("admin")
+    @force_post
     def translate(
         self,
         *,
         text: str,
         language: str,
-        simplified: bool = False,
         characteristic: t.Optional[str] = None,
     ):
         """
@@ -209,25 +205,16 @@ class Assistant(Singleton):
 
         :param text: The source text to translate.
         :param language: The target language code (e.g. ``"de"``, ``"en"``, ``"de-x-simple"``).
-        :param simplified: **Deprecated** – Use ``characteristic="simplified"`` instead.
-            When ``True``, applies a simplified language style.
         :param characteristic: Optional translation style (e.g. ``"simplified"``, ``"formal"``, etc.)
             as defined in ``CONFIG.translate_language_characteristics``.
         :return: Translated text as a plain string. HTML tags from the original text are preserved.
 
-        :raises BadRequest: If both ``simplified`` and ``characteristic`` are used simultaneously.
         :raises InternalServerError: If configuration is missing.
 
         .. note::
            - The translation style is determined by merging base rules (`*`) and the selected characteristic.
            - The returned translation contains only the translated text, with no explanation or additional formatting.
         """
-        if simplified:
-            if characteristic is not None:
-                raise errors.BadRequest("Cannot use parameter *simplified* and *characteristic* at the same time")
-            logger.warning('simplified is deprecated, use characteristic="simplified" instead')
-            characteristic = "simplified"
-
         if not (skel := self.getContents()):
             raise errors.InternalServerError(descr="Configuration missing")
 
@@ -252,7 +239,8 @@ class Assistant(Singleton):
         return self.render_text(message)
 
     @exposed
-    @access("user-view")
+    @access("admin", "file-view")
+    @force_post
     def describe_image(
         self,
         filekey: db.Key | str,

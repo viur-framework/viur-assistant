@@ -36,7 +36,7 @@ def test_translate_umlauts(session):
     assert "ü" in response.json()
 
 
-def test_translate_with_characteristic(session):
+def test_translate_with_unknown_characteristic(session):
     params = {
         "text": "Hallo Welt!",
         "language": "en",
@@ -45,31 +45,19 @@ def test_translate_with_characteristic(session):
     response = session.post(BASE_URL, params=params)
     print_response_on_error(response)
     assert response.status_code == 200
-    assert response.text.strip()
+    assert response.json().strip()
 
 
 def test_translate_with_simplified(session):
     params = {
         "text": "Hallo Welt!",
         "language": "en",
-        "simplified": "true",
+        "characteristic": "simple",
     }
     response = session.post(BASE_URL, params=params)
     print_response_on_error(response)
     assert response.status_code == 200
-    assert response.text.strip()
-
-
-def test_translate_conflicting_simplified_and_characteristic(session):
-    params = {
-        "text": "Hallo Welt!",
-        "language": "en",
-        "simplified": "true",
-        "characteristic": "formal"
-    }
-    response = session.post(BASE_URL, params=params)
-    print_response_on_error(response)
-    assert response.status_code == 400  # BadRequest
+    assert response.json().strip()
 
 
 def test_translate_missing_parameters(session):
@@ -80,3 +68,15 @@ def test_translate_missing_parameters(session):
     response = session.post(BASE_URL, params=params)
     print_response_on_error(response)
     assert response.status_code == 406  # Not Acceptable, per Vorgabe
+
+
+def test_translate_with_html(session):
+    params = {
+        "text": "Dieser Text beinhaltet <strong>HTML</strong>-Code, welcher behalten werden soll.",
+        "language": "en",
+    }
+    response = session.post(BASE_URL, params=params)
+    print_response_on_error(response)
+    assert response.status_code == 200
+    assert response.json().strip()
+    assert "<strong>HTML</strong>" in response.json()

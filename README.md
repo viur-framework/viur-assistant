@@ -11,7 +11,7 @@
         <img src="https://img.shields.io/github/license/viur-framework/viur-assistant" alt="Badge displaying the license" title="License badge">
     </a>
     <br>
-    AI-based <a href="https://www.viur.dev">ViUR</a> assistant plugin.
+    <p>AI-based <a href="https://www.viur.dev">ViUR</a> assistant plugin.</p>
 </div>
 
 ## Usage

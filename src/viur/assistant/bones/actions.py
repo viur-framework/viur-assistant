@@ -16,7 +16,7 @@ Examples:
             },
         )
 
-        descr = ImageBone(
+        image = ImageBone(
             params={
                 BONE_ACTION_KEY: [BoneAction.DESCRIBE_IMAGE],
             },

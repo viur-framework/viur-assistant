@@ -10,7 +10,7 @@ import anthropic
 import openai
 from openai.types import ChatModel
 from openai.types.chat import ChatCompletionMessageParam
-from viur.core import conf, current, errors, exposed, utils
+from viur.core import conf, current, db, errors, exposed, utils
 from viur.core.decorators import access
 from viur.core.prototypes import List, Singleton, Tree
 
@@ -153,6 +153,21 @@ class Assistant(Singleton):
         return message.model_dump_json()  # TODO: parse real "code" value
 
     def get_viur_structures(self, modules_to_include: t.Iterable[str]) -> dict[str, dict]:
+        """
+        Collect and return ViUR module structures for a given list of module names.
+
+        For each named module, its structure is extracted if it is of type ``List`` or ``Tree``.
+        ``Tree`` structures will return separate entries for ``node`` and ``leaf`` skeletons.
+
+        :param modules_to_include: List of ViUR module names to retrieve structures for.
+        :return: A dictionary mapping module names to their respective structure definitions.
+            For ``Tree`` modules, nested keys ``"node"`` and ``"leaf"`` are returned.
+
+        :raises ValueError: If a module exists but is not a supported type (i.e., not ``List`` or ``Tree``).
+
+        .. note::
+           Modules that are missing or not found are silently skipped.
+        """
         structures_from_viur = {}
         for module_name in modules_to_include:
             module = getattr(conf.main_app.vi, module_name, None)
@@ -185,6 +200,28 @@ class Assistant(Singleton):
         simplified: bool = False,
         characteristic: t.Optional[str] = None,
     ):
+        """
+        Translate a given text into a target language, optionally using a specific style.
+
+        This method sends the input text to OpenAI with instructions to
+        translate it into the requested language, optionally applying predefined translation
+        characteristics such as simplification.
+
+        :param text: The source text to translate.
+        :param language: The target language code (e.g. ``"de"``, ``"en"``, ``"de-x-simple"``).
+        :param simplified: **Deprecated** – Use ``characteristic="simplified"`` instead.
+            When ``True``, applies a simplified language style.
+        :param characteristic: Optional translation style (e.g. ``"simplified"``, ``"formal"``, etc.)
+            as defined in ``CONFIG.translate_language_characteristics``.
+        :return: Translated text as a plain string. HTML tags from the original text are preserved.
+
+        :raises BadRequest: If both ``simplified`` and ``characteristic`` are used simultaneously.
+        :raises InternalServerError: If configuration is missing.
+
+        .. note::
+           - The translation style is determined by merging base rules (`*`) and the selected characteristic.
+           - The returned translation contains only the translated text, with no explanation or additional formatting.
+        """
         if simplified:
             if characteristic is not None:
                 raise errors.BadRequest("Cannot use parameter *simplified* and *characteristic* at the same time")
@@ -218,11 +255,34 @@ class Assistant(Singleton):
     @access("user-view")
     def describe_image(
         self,
-        filekey: str,
+        filekey: db.Key | str,
         prompt: str = "",
         context: str = "",
         language: str | None = None,
     ):
+        """
+        Generate an HTML ``alt`` attribute description for a given image using OpenAi.
+
+        This method reads an image via its filekey, resizes it to a configured pixel target,
+        and sends it along with optional prompt and context data to an OpenAI model.
+        The model returns a plain-text alternative description for accessibility purposes,
+        formatted as an HTML ``alt`` text in the specified language.
+
+        :param filekey: Key identifying the image file in the ViUR file module.
+            (Key of the :class:`file skeleton <viur.core.modules.file.FileLeafSkel>`).
+        :param prompt: Optional user-defined hint or instruction for how the image should be interpreted.
+        :param context: Optional additional background information to support a better description.
+        :param language: Target language code for the generated description (e.g., ``"en"``, ``"de-x-simple"``).
+            Falls back to the current session language if not specified.
+        :return: A plain-text string suitable for use in an HTML ``alt`` attribute (no quotes or labels).
+
+        :raises InternalServerError: If required configuration is missing.
+        :raises NotFound: If the referenced image file could not be loaded.
+
+        .. note::
+          - The image is resized and converted to JPEG before being sent to the model.
+          - This function uses a preconfigured OpenAI model, pixel count, and JPEG quality settings.
+        """
         if not (skel := self.getContents()):
             raise errors.InternalServerError(descr="Configuration missing")
 

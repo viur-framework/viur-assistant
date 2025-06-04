@@ -4,6 +4,9 @@
     <a href="https://pypi.org/project/viur-assistant/">
         <img alt="Badge showing current PyPI version" title="PyPI" src="https://img.shields.io/pypi/v/viur-assistant">
     </a>
+    <a href="https://viur-assistant.readthedocs.io/en/latest/?badge=latest">
+        <img src="https://readthedocs.org/projects/viur-assistant/badge/?version=latest" alt="Documentation Status">
+    </a>
     <a href="LICENSE">
         <img src="https://img.shields.io/github/license/viur-framework/viur-assistant" alt="Badge displaying the license" title="License badge">
     </a>

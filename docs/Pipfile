@@ -1,0 +1,20 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+sphinx = "*"
+sphinx-autoapi = "*"
+sphinx-autobuild = "*"
+sphinx-autodoc-typehints = "*"
+furo = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.13"
+
+[scripts]
+# pipenv run [...]
+gen_requirements = "bash -c 'pipenv requirements --hash > requirements.txt'"

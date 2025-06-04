@@ -14,7 +14,7 @@ from viur.core import conf, current, errors, exposed, utils
 from viur.core.decorators import access
 from viur.core.prototypes import List, Singleton, Tree
 
-from ..config import ASSISTANT_LOGGER, CONFIG
+from viur.assistant.config import ASSISTANT_LOGGER, CONFIG
 
 logger = ASSISTANT_LOGGER.getChild(__name__)
 
@@ -424,4 +424,4 @@ Assistant.json = True
 Assistant.html = True
 
 # Enforce AssistantSkel is loaded and initialized anywhere
-from ..skeletons.assistant import AssistantSkel  # noqa
+from viur.assistant.skeletons.assistant import AssistantSkel  # noqa

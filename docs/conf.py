@@ -12,9 +12,9 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 import datetime
+import importlib.util
 import os
 import sys
-import importlib.util
 
 sys.path.insert(0, os.path.abspath("../src"))
 
@@ -228,11 +228,13 @@ html_show_sourcelink = True
 # Output file base name for HTML help builder.
 htmlhelp_basename = "viur-assistant-doc"
 
+
 def skip_util_classes(app, what, name, obj, skip, options):
-    print(f"{app=} {what=} {name=} {obj=} {skip=} {options=}")
+    # print(f"{app=} {what=} {name=} {obj=} {skip=} {options=}")
     if what == "data" and name.endswith(".logger"):
-       skip = True
+        skip = True
     return skip
 
+
 def setup(sphinx):
-   sphinx.connect("autoapi-skip-member", skip_util_classes)
+    sphinx.connect("autoapi-skip-member", skip_util_classes)

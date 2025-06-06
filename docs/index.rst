@@ -16,7 +16,7 @@ Welcome to ViUR Assistant
 
 
 .. TODO:
-.. image:: images/viur-assistant.svg
+  .. image:: images/viur-assistant.svg
 
 ViUR Assistant is a powerful Python module designed to integrate AI assistant
 capabilities seamlessly into your `ViUR <https://www.viur.dev>`_ projects.

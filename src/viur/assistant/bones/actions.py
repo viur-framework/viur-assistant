@@ -25,6 +25,11 @@ Examples:
 
 import typing as t
 
+__all__ = [
+    "BONE_ACTION_KEY",
+    "BoneAction",
+]
+
 BONE_ACTION_KEY: t.Final[str] = "actions"
 """The key of the parameter"""
 

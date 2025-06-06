@@ -10,11 +10,10 @@ import anthropic
 import openai
 from openai.types import ChatModel
 from openai.types.chat import ChatCompletionMessageParam
+from viur.assistant.config import ASSISTANT_LOGGER, CONFIG
 from viur.core import conf, current, db, errors, exposed, utils
 from viur.core.decorators import access, force_post
 from viur.core.prototypes import List, Singleton, Tree
-
-from viur.assistant.config import ASSISTANT_LOGGER, CONFIG
 
 logger = ASSISTANT_LOGGER.getChild(__name__)
 
@@ -388,6 +387,48 @@ class Assistant(Singleton):
         result_bio.seek(0)
         return result_bio.read()
 
+    @exposed
+    @access("admin")
+    # @force_post
+    def demo_data(
+        self,
+        module: str,
+    ):
+        if not (skel := self.getContents()):
+            raise errors.InternalServerError(descr="Configuration missing")
+
+        try:
+            structure = getattr(conf.main_app.vi, module).structure()
+        except AttributeError:
+            raise
+            raise errors.NotFound(f"{module!r} is not a valid module")
+
+        content = [
+            {
+                "type": "text",
+                "text": (
+                    f"Generate test data for a {module} ViUR skeleton with the following structure:\n"
+                    f" {json.dumps(json.loads(structure)["structure"])}"
+                ),
+            },
+        ]
+
+        message = self.openai_create_completion(
+            model=skel["openai_model"],
+            messages=[{  # type: ignore (typed dict)
+                "role": "system",
+                "content": "Provide data as JSON object with the mapping bonename: value(s)\n"
+                           "languages wrap in a object like {\"de\": \"...\", ... }.\n"
+                           "relationalbone in a object like {\"dest\": \"referencing object\", \"rel\": \"using skel object\"}.\n"                ,
+            }, {  # type: ignore (typed dict)
+                "role": "user",
+                "content": content,
+            }],
+        )
+        message = json.loads(message)
+        # return self.render_text(message)
+        return self.render_object(message)
+
     def openai_create_completion(
         self,
         *,
@@ -463,6 +504,23 @@ class Assistant(Singleton):
             current.request.get().response.headers["Content-Type"] = "text/html; charset=utf-8"
             return text
         elif utils.string.is_prefix(self.render.kind, "json"):
+            current.request.get().response.headers["Content-Type"] = "application/json; charset=utf-8"
+            return json.dumps(text)
+        raise errors.NotImplemented(f"{self.render.kind} rendering not implemented")
+
+    def render_object(self, text: t.Any) -> t.Any:
+        """
+        Render the give text as usual for the current renderer.
+
+        If the current renderer is the JSON renderer, JSON string is returned
+        and the content-type header is also set to JSON.
+
+        :param text: The text to render.
+        """
+        # if utils.string.is_prefix(self.render.kind, "html"):
+        #     current.request.get().response.headers["Content-Type"] = "text/html; charset=utf-8"
+        #     return text
+        if utils.string.is_prefix(self.render.kind, "json"):
             current.request.get().response.headers["Content-Type"] = "application/json; charset=utf-8"
             return json.dumps(text)
         raise errors.NotImplemented(f"{self.render.kind} rendering not implemented")

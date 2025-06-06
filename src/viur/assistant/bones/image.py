@@ -14,7 +14,7 @@ __all__ = [
 
 class ImageBoneRelSkel(RelSkel):
     """
-    RelSkel designed to use as using skeleton in a ``ÌmageBone``.
+    RelSkel designed to use as using skeleton in a ``ImageBone``.
     """
 
     alt = StringBone(
